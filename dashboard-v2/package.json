@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.26",
-    "lightweight-charts": "^4.2.3",
+    "lightweight-charts": "^5.2.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "zustand": "^5.0.8"
