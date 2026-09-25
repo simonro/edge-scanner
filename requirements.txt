@@ -4,7 +4,7 @@
 # 2026-09-25 (pandas 3.0, FastAPI 0.141 / Starlette 1.7, websockets 17, pyarrow 25).
 alpaca-py>=0.38.0,<1
 pandas>=2.0.0,<4
-numpy>=1.26,<3
+numpy>=2.5.3,<3
 pyarrow>=14.0.1,<26             # 14.0.0 has CVE-2023-47248
 python-dotenv>=1.0.0,<2
 requests>=2.31.0,<3
