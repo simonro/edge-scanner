@@ -248,22 +248,59 @@ def test_short_history_is_not_downloaded_again_once_that_span_was_asked_for(tmp_
 
 def test_cache_written_after_the_last_close_is_fresh_the_next_morning(tmp_path):
     """Monday morning's file holds Friday's bars. Tuesday asks for Monday: the file
-    was written before Monday's close, so it is stale. Tuesday evening's file,
-    written after Monday's close, is fresh on Wednesday morning."""
+    was written before Monday's close, so it is stale. Monday evening's refresh,
+    which asks for Monday and is written after its close, is fresh on Tuesday."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
     from scanner.data.schwab import _fresh
     et = ZoneInfo("America/New_York")
-    idx = pd.date_range("2026-09-14", "2026-09-18", freq="B", tz="UTC")
+    idx = pd.date_range("2026-09-14 06:00", "2026-09-18 06:00", freq="B", tz="UTC")
     df = pd.DataFrame({"volume": 1.0}, index=idx)               # data through Fri 09-18
     p = tmp_path / "x.parquet"; p.write_bytes(b"x")
     import os
     os.utime(p, (datetime(2026, 9, 21, 9, 43, tzinfo=et).timestamp(),) * 2)      # written Mon 09:43
-    assert _fresh(p, df, date(2026, 9, 18))                      # asked for Friday: fine
-    assert not _fresh(p, df, date(2026, 9, 21))                  # asked for Monday: stale
+    assert _fresh(p, df, date(2026, 9, 18), date(2026, 9, 20))   # asked for Friday: fine
+    assert not _fresh(p, df, date(2026, 9, 21), date(2026, 9, 20))   # asked for Monday: stale
     os.utime(p, (datetime(2026, 9, 21, 17, 30, tzinfo=et).timestamp(),) * 2)     # rewritten Mon 17:30
-    assert _fresh(p, df, date(2026, 9, 21))                      # Tuesday morning: nothing more to get
-    assert _fresh(p, df, date(2026, 9, 20))                      # a Sunday rolls back to Friday
+    assert _fresh(p, df, date(2026, 9, 21), date(2026, 9, 21))   # Tuesday morning: nothing more to get
+    assert _fresh(p, df, date(2026, 9, 20), date(2026, 9, 21))   # a Sunday rolls back to Friday
+
+
+def test_an_evening_start_does_not_leave_a_day_short_file_that_reads_as_fresh(tmp_path):
+    """Issue #20. A start on Friday evening asks for history through Thursday and
+    writes the file after Friday's close. Monday asks through Sunday (target
+    Friday): the file was written after Friday's close but never asked for
+    Friday, so it must be downloaded again."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import os
+    et = ZoneInfo("America/New_York")
+    friday_evening = datetime(2026, 9, 25, 18, 30, tzinfo=et).timestamp()
+    c = _Client()
+    _feed(tmp_path, c).get_historical_daily("AAA", date(2026, 9, 1), date(2026, 9, 24))      # through Thursday
+    os.utime(tmp_path / "d" / "AAA.parquet", (friday_evening,) * 2)
+    _feed(tmp_path, c).get_historical_daily("AAA", date(2026, 9, 1), date(2026, 9, 27))      # Monday's start
+    assert c.calls == ["AAA", "AAA"]                # Friday's bar is fetched, not assumed
+
+    _feed(tmp_path, c).get_historical_bars("BBB", "5Min", date(2026, 9, 1), date(2026, 9, 24))
+    os.utime(tmp_path / "m" / "BBB.parquet", (friday_evening,) * 2)
+    _feed(tmp_path, c).get_historical_bars("BBB", "5Min", date(2026, 9, 1), date(2026, 9, 27))
+    assert c.calls[2:] == ["BBB", "BBB"]            # same for the 5-minute cache
+
+
+def test_a_file_that_asked_for_the_session_stays_fresh_without_its_bar(tmp_path):
+    """The written-after-close shortcut still holds when the request did ask for
+    the session: a halted symbol has no bar that day and must not be downloaded
+    again on every start."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import os
+    et = ZoneInfo("America/New_York")
+    c = _Client()
+    _feed(tmp_path, c).get_historical_daily("AAA", date(2026, 9, 1), date(2026, 9, 25))      # Friday's refresh
+    os.utime(tmp_path / "d" / "AAA.parquet", (datetime(2026, 9, 25, 17, 30, tzinfo=et).timestamp(),) * 2)
+    _feed(tmp_path, c).get_historical_daily("AAA", date(2026, 9, 1), date(2026, 9, 27))      # data ends 09-10
+    assert c.calls == ["AAA"]
 
 
 def test_other_bar_sizes_never_replace_the_5_minute_cache(tmp_path):

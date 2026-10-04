@@ -155,7 +155,7 @@ def _last_session_before(moment: datetime) -> date:
     return d
 
 
-def _fresh(path: Path, df: pd.DataFrame, end: date) -> bool:
+def _fresh(path: Path, df: pd.DataFrame, end: date, asked_end: date | None = None) -> bool:
     """True when a cached frame does not need re-downloading.
 
     Schwab serves ONE symbol per history request at about 120 a minute, so
@@ -164,7 +164,13 @@ def _fresh(path: Path, df: pd.DataFrame, end: date) -> bool:
     bars, and Tuesday asks for Monday: that rule re-downloaded everything every
     morning) but "could Schwab give more than this file has?" It could not if
     the file was written after the close of the last session on or before `end`,
-    plus a margin for late final bars.
+    plus a margin for late final bars, AND the request that wrote it asked for
+    data through that session (`asked_end`). Without the second half, a start
+    on Friday evening (which asks for history through Thursday) left a file
+    written after Friday's close that held only Thursday, and Monday's start
+    trusted it: prior close, gap % and prior-day levels came from Thursday
+    (issue #20). An unknown `asked_end` (a file from before it was recorded)
+    falls back to checking the data itself.
     """
     if df is None or df.empty:
         return False
@@ -172,9 +178,10 @@ def _fresh(path: Path, df: pd.DataFrame, end: date) -> bool:
     target = end
     while target.weekday() >= 5:
         target = date.fromordinal(target.toordinal() - 1)
-    # Written after that session's close (with an hour for the tape to settle)?
+    # Written after that session's close (with an hour for the tape to settle),
+    # by a request that asked for that session?
     close = datetime(target.year, target.month, target.day, 17, 0, tzinfo=_ET)
-    if written >= close:
+    if written >= close and asked_end is not None and asked_end >= target:
         return True
     # Or the data itself already reaches that session.
     last = pd.Timestamp(df.index.max())
@@ -227,6 +234,39 @@ class _Asked:
                 log.debug("could not save %s: %s", self._path, exc)
 
 
+class _AskedEnd(_Asked):
+    """End date of the request that wrote each cached file, per symbol, per cache.
+
+    _fresh() needs it: a file written after a session's close holds that
+    session only if the request asked for it. A start in the evening asks for
+    history through the day before, so its file is a day short (issue #20).
+    The latest request wins, not the latest end: a later, shorter request
+    rewrote the file, and the record must describe what the file holds.
+    """
+
+    def __init__(self, cache_dir: Path) -> None:
+        super().__init__(cache_dir)
+        self._path = Path(cache_dir) / "_asked_end.json"
+        try:
+            self._map = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self._map = {}
+
+    def end(self, symbol: str) -> date | None:
+        got = self._map.get(symbol)
+        try:
+            return date.fromisoformat(got) if got else None
+        except ValueError:
+            return None
+
+    def note(self, symbol: str, end: date) -> None:
+        iso = end.isoformat()
+        with self._lock:
+            if self._map.get(symbol) != iso:
+                self._map[symbol] = iso
+                self._dirty = True
+
+
 class SchwabFeed(DataFeed):
     """DataFeed implementation over the Schwab market-data API."""
 
@@ -240,6 +280,8 @@ class SchwabFeed(DataFeed):
         self._intraday_cache_dir = Path(intraday_cache_dir)
         self._asked_daily = _Asked(self._cache_dir)
         self._asked_intraday = _Asked(self._intraday_cache_dir)
+        self._ended_daily = _AskedEnd(self._cache_dir)
+        self._ended_intraday = _AskedEnd(self._intraday_cache_dir)
         self._in_batch = False
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._intraday_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -348,13 +390,16 @@ class SchwabFeed(DataFeed):
         p = self._cache_dir / f"{symbol}.parquet"
         if p.exists():
             cached = parquet.load(symbol, self._cache_dir)
-            if _fresh(p, cached, end) and (_covers(cached, start) or self._asked_daily.covers(symbol, start)):
+            if (_fresh(p, cached, end, self._ended_daily.end(symbol))
+                    and (_covers(cached, start) or self._asked_daily.covers(symbol, start))):
                 return cached
         df = self._price_history(symbol, "Day", start, end)
         parquet.save(symbol, df, self._cache_dir)
         self._asked_daily.note(symbol, start)
+        self._ended_daily.note(symbol, end)
         if not self._in_batch:
             self._asked_daily.save()
+            self._ended_daily.save()
         return df
 
     def get_historical_bars(self, symbol: str, timeframe: Timeframe,
@@ -368,13 +413,16 @@ class SchwabFeed(DataFeed):
         p = self._intraday_cache_dir / f"{symbol}.parquet"
         if p.exists():
             cached = parquet.load(symbol, self._intraday_cache_dir)
-            if _fresh(p, cached, end) and (_covers(cached, start) or self._asked_intraday.covers(symbol, start)):
+            if (_fresh(p, cached, end, self._ended_intraday.end(symbol))
+                    and (_covers(cached, start) or self._asked_intraday.covers(symbol, start))):
                 return cached
         df = self._price_history(symbol, timeframe, start, end)
         parquet.save(symbol, df, self._intraday_cache_dir)
         self._asked_intraday.note(symbol, start)
+        self._ended_intraday.note(symbol, end)
         if not self._in_batch:
             self._asked_intraday.save()
+            self._ended_intraday.save()
         return df
 
     def get_bars_range(self, symbol: str, timeframe: Timeframe,
@@ -441,6 +489,8 @@ class SchwabFeed(DataFeed):
         self._in_batch = False
         self._asked_daily.save()
         self._asked_intraday.save()
+        self._ended_daily.save()
+        self._ended_intraday.save()
         return out
 
     def get_historical_daily_multi(self, symbols: list[str], start: date, end: date,
