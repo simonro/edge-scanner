@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useUniverse } from '../stores/universeStore'
 import { SYMBOL_ACTIONS } from '../plugins'
 import { logoUrls } from '../lib/useFundamentals'
@@ -68,7 +68,9 @@ export function ColumnPicker({ value, onChange, all }: {
   )
 }
 
-/** Symbol input with universe autocomplete. Enter commits (uppercased). */
+/** Symbol input with universe autocomplete. Enter commits (uppercased). The
+ *  text is selected on focus and after Enter, so the next symbol can be typed
+ *  straight over the last one. */
 export function SymbolInput({ value, onCommit, placeholder = 'Symbol', small, autoFocus, clearOnCommit }: {
   value?: string | null; onCommit(sym: string): void; placeholder?: string; small?: boolean; autoFocus?: boolean; clearOnCommit?: boolean
 }) {
@@ -76,6 +78,10 @@ export function SymbolInput({ value, onCommit, placeholder = 'Symbol', small, au
   const [text, setText] = useState(value ?? '')
   const [open, setOpen] = useState(false)
   const [hi, setHi] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // Deferred a frame: selecting inside onFocus is undone by the click's own
+  // mouseup, and after Enter the committed text has not rendered yet.
+  const selectAll = () => requestAnimationFrame(() => inputRef.current?.select())
   // derived state: when the bound value changes from outside, mirror it into the field
   const [prevValue, setPrevValue] = useState(value)
   if (value !== prevValue) { setPrevValue(value); setText(value ?? '') }
@@ -92,17 +98,19 @@ export function SymbolInput({ value, onCommit, placeholder = 'Symbol', small, au
     onCommit(v)
     setOpen(false)
     setText(clearOnCommit ? '' : v)
+    selectAll()
   }
   return (
     <div style={{ position: 'relative' }} className="wf-nodrag">
       <input
+        ref={inputRef}
         className={`input mono${small ? ' sm' : ''}`}
         style={{ width: small ? 76 : 96, textTransform: 'uppercase' }}
         value={text}
         placeholder={placeholder}
         autoFocus={autoFocus}
         onChange={e => { setText(e.target.value); setOpen(true); setHi(0) }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => { setOpen(true); selectAll() }}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
         onKeyDown={e => {
           if (e.key === 'Enter') commit(matches[hi] ?? text)
