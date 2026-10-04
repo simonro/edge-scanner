@@ -9,7 +9,8 @@ Filters applied (all thresholds are tunable via CLI flags):
      (scanner/symbols.py, the same rule for every source)
   3. Price >= $15  (latest trade)
   4. 20-day avg volume >= --min-avg-vol shares/day, off by default (daily bars)
-  5. 20-day avg dollar volume >= $150M/day  (avg_vol * price)
+  5. 20-day avg dollar volume >= $150M/day  (avg_vol * price); $3.75M on
+     Alpaca's free IEX feed, which sees only a few percent of the volume
   6. ATR% (20-day avg daily range / price) >= 1%  (no upper ceiling)
 
 Market data (steps 3-6) comes from the provider: --provider, default the
@@ -49,10 +50,24 @@ _MIN_SYMBOLS = 100
 # fetch the span the live warmup uses and leave it in the cache for it.
 _WARMUP_SPAN_DAYS = 400
 
+_DOLLAR_VOL_M = 150.0
+# Alpaca's free IEX feed is one exchange, about 2.5% of consolidated volume, so
+# every volume it reports is roughly 40x lower than on SIP. With the SIP floor
+# nearly nothing passed and a first start on IEX could not build a universe
+# (discussion #19). The floor is scaled to the share the feed sees.
+_IEX_VOLUME_SHARE = 0.025
+
 
 def default_provider() -> str:
     p = (os.environ.get("DATA_PROVIDER") or "alpaca").strip().lower()
     return p if p in FEEDS else "alpaca"
+
+
+def default_dollar_vol_m(provider: str) -> float:
+    """The dollar-volume floor in millions, scaled down on Alpaca's IEX feed."""
+    if provider == "alpaca" and (os.environ.get("ALPACA_FEED") or "sip").strip().lower() == "iex":
+        return _DOLLAR_VOL_M * _IEX_VOLUME_SHARE
+    return _DOLLAR_VOL_M
 
 
 # ── Step 3: latest prices ─────────────────────────────────────────────────────
@@ -216,8 +231,9 @@ def main() -> None:
                         help="Minimum last trade price (default: 15.0)")
     parser.add_argument("--min-avg-vol",       type=int,   default=0,
                         help="Minimum 20-day avg daily share volume (default: 0, off)")
-    parser.add_argument("--min-dollar-vol-m",  type=float, default=150.0,
-                        help="Minimum 20-day avg daily dollar volume in millions (default: 150)")
+    parser.add_argument("--min-dollar-vol-m",  type=float, default=None,
+                        help="Minimum 20-day avg daily dollar volume in millions "
+                             "(default: 150, or 3.75 on Alpaca's IEX feed)")
     parser.add_argument("--min-atr-pct",       type=float, default=1.0,
                         help="Minimum ATR%% (default: 1.0)")
     parser.add_argument("--days",              type=int,   default=20,
@@ -232,6 +248,12 @@ def main() -> None:
         format="%(asctime)s %(levelname)-8s %(message)s",
     )
     source = args.symbols_from or ("alpaca" if args.provider == "alpaca" else "nasdaq")
+    if args.min_dollar_vol_m is None:
+        args.min_dollar_vol_m = default_dollar_vol_m(args.provider)
+        if args.min_dollar_vol_m != _DOLLAR_VOL_M:
+            log.info("ALPACA_FEED=iex: one exchange, about %.1f%% of volume; dollar-volume floor "
+                     "scaled to $%.2fM/day (set --min-dollar-vol-m to override)",
+                     _IEX_VOLUME_SHARE * 100, args.min_dollar_vol_m)
 
     # Steps 1+2: symbol list + eligibility
     symbols = symbol_sources.eligible_symbols(symbol_sources.fetch(source))
@@ -272,7 +294,7 @@ def main() -> None:
     print(f"\nUniverse written to {out_path}  ({len(df)} symbols, {args.provider} data, {source} symbol list)")
     print(f"  Price >= ${args.min_price:.0f}  |  "
           f"Avg vol >= {args.min_avg_vol:,}  |  "
-          f"Dollar vol >= ${args.min_dollar_vol_m:.0f}M/day  |  "
+          f"Dollar vol >= ${args.min_dollar_vol_m:g}M/day  |  "
           f"ATR% >= {args.min_atr_pct:.0f}%")
     print(f"  Most liquid (by dollar vol): {', '.join(df['symbol'].head(10).tolist())}")
 
