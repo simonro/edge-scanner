@@ -5,7 +5,7 @@
 alpaca-py>=0.38.0,<1
 pandas>=2.0.0,<4
 numpy>=1.26,<3
-pyarrow>=14.0.1,<26             # 14.0.0 has CVE-2023-47248
+pyarrow>=25.0.1,<26             # 14.0.0 has CVE-2023-47248
 python-dotenv>=1.0.0,<2
 requests>=2.31.0,<3
 lxml>=4.9.0,<7
