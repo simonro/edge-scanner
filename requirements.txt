@@ -11,7 +11,7 @@ requests>=2.31.0,<3
 lxml>=4.9.0,<7
 fastapi>=0.120.1,<1             # first to allow Starlette 0.49.1 (FileResponse range DoS fix)
 uvicorn[standard]>=0.29.0,<1
-websockets>=12.0,<18
+websockets>=17.1,<18
 yfinance>=1.2.2,<2              # 1.2.2+ requires curl_cffi 0.15+ (redirect advisory fix)
 schwabdev>=4.0,<5               # only for DATA_PROVIDER=schwab (MIT, github.com/tylerebowers/Schwabdev)
 
