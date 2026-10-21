@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GridItem, Screen, WindowConfig, WindowType } from '../types'
+import type { ChartOverlays, GridItem, Screen, WindowConfig, WindowType } from '../types'
 import { api } from '../lib/api'
 import { id as newId } from '../lib/ids'
 import { WINDOW_SIZES, migrateScannerWindow, windowDefaults } from '../windows/defaults'
@@ -44,6 +44,7 @@ interface ScreensState {
   duplicateScreen(id: string, name?: string): string
   deleteScreen(id: string): void
   setLocked(locked: boolean): void
+  saveChartDefaults(overlays: ChartOverlays): void
   addWindow(type: WindowType, partial?: Partial<WindowConfig>): string
   removeWindow(id: string): void
   updateWindow(id: string, patch: Record<string, unknown>): void
@@ -268,6 +269,7 @@ export const useScreens = create<ScreensState>()((set, get) => {
       s.windows = Object.fromEntries(Object.entries(src.windows).map(([wid, w]) => [map.get(wid)!, { ...w, id: map.get(wid)! }]))
       s.layout = src.layout.map(l => ({ ...l, i: map.get(l.i)! }))
       s.locked = src.locked
+      if (src.chartOverlays) s.chartOverlays = { ...src.chartOverlays }
       set(st => ({ screens: { ...st.screens, [s.id]: s }, order: [...st.order, s.id] }))
       get().setActive(s.id)
       schedulePersist(get, set, s.id)
@@ -291,6 +293,8 @@ export const useScreens = create<ScreensState>()((set, get) => {
 
     setLocked(locked) { mutateActive(s => ({ ...s, locked })) },
 
+    saveChartDefaults(overlays) { mutateActive(s => ({ ...s, chartOverlays: overlays })) },
+
     addWindow(type, partial = {}) {
       const wid = newId('w')
       const size = WINDOW_SIZES[type]
@@ -310,7 +314,8 @@ export const useScreens = create<ScreensState>()((set, get) => {
           i: wid, x, y, w: wf, h: hf, z: maxZ(s.layout) + 1,
           minW: size.minW / W, minH: size.minH / H, ...(size.maxH ? { maxH: size.maxH / H } : {}),
         }
-        const cfg = { ...windowDefaults(type, wid), ...partial, id: wid, type } as WindowConfig
+        const defaults = windowDefaults(type, wid)
+        const cfg = { ...defaults, ...(type === 'chart' && s.chartOverlays ? { overlays: s.chartOverlays } : {}), ...partial, id: wid, type } as WindowConfig
         return { ...s, layout: [...s.layout, item], windows: { ...s.windows, [wid]: cfg } }
       })
       return wid

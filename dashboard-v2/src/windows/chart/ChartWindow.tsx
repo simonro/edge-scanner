@@ -277,6 +277,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
 
 export function ChartSettings({ win, onChange }: { win: ChartConfig; onChange(p: Partial<ChartConfig>): void }) {
   const o = win.overlays
+  const saveChartDefaults = useScreens(s => s.saveChartDefaults)
   const t = (k: keyof ChartOverlays, label: string) => <Toggle checked={o[k]} onChange={v => onChange({ overlays: { ...o, [k]: v } })} label={label} />
   return (
     <>
@@ -289,6 +290,7 @@ export function ChartSettings({ win, onChange }: { win: ChartConfig; onChange(p:
       <Field label="Intraday overlays">{t('vwap', 'Session VWAP')}{t('ema9', 'EMA 9')}{t('ema21', 'EMA 21')}{t('volume', 'Volume')}</Field>
       <Field label="Moving averages (on this timeframe's bars)">{t('sma50', 'SMA 50')}{t('sma100', 'SMA 100')}{t('sma200', 'SMA 200')}</Field>
       <Field label="Levels">{t('pdHL', 'Prior-day high / low / close (PDH / PDL / PDC)')}{t('pmHL', 'Premarket high / low (PMH / PML)')}</Field>
+      <Field label="New charts on this screen"><button className="btn sm" onClick={() => saveChartDefaults(o)}>Save these indicators as defaults</button></Field>
       <Toggle checked={win.extended} onChange={extended => onChange({ extended })} label="Show extended hours (04:00-20:00 ET)" />
     </>
   )

@@ -170,6 +170,8 @@ export interface Screen {
   createdAt: string
   updatedAt: string
   locked: boolean
+  /** Indicators applied when adding charts to this screen. */
+  chartOverlays?: ChartOverlays
   layout: GridItem[]
   windows: Record<string, WindowConfig>
 }
