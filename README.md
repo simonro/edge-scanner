@@ -235,7 +235,6 @@ ultrawide monitor. Built by describing the problems to Claude Code.
 
 - YouTube: [@tapetoedge](https://www.youtube.com/@tapetoedge)
 - X: [@tapetoedge](https://x.com/tapetoedge)
-- Newsletter: [tape-to-edge.beehiiv.com](https://tape-to-edge.beehiiv.com)
 
 Educational software, not financial advice. No affiliate relationship with Alpaca, Schwab or
 anything else shown here. You are responsible for your own trading decisions, and the software
