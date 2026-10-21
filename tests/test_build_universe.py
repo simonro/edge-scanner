@@ -83,3 +83,19 @@ def test_compare_classifies_list_data_and_near_cutoff(tmp_path):
     assert "| ONLYA | list | not in the other symbol list |" in report
     assert "| VOLA | data | avg_vol: 4,800,000 there vs 6,000,000 here (threshold 5,000,000) | yes |" in report
     assert "| ONLYB | list |" in report
+
+
+def test_iex_scales_the_dollar_volume_floor(monkeypatch):
+    """IEX sees about 2.5% of consolidated volume: with the SIP floor a first
+    start on the free feed screened out nearly everything (discussion #19)."""
+    monkeypatch.delenv("ALPACA_FEED", raising=False)
+    assert bu.default_dollar_vol_m("alpaca") == 150.0            # SIP, the default
+    monkeypatch.setenv("ALPACA_FEED", "iex")
+    assert bu.default_dollar_vol_m("alpaca") == 3.75
+    assert bu.default_dollar_vol_m("schwab") == 150.0            # the setting is Alpaca's alone
+    # $20 x 250k shares = $5M a day: out on the SIP floor, in on the IEX one
+    metrics = {"ABC": {"last_price": 20.0, "avg_vol_20d": 250_000, "avg_dollar_vol_20d": 5_000_000, "atr_pct": 2.0}}
+    args = SimpleNamespace(min_price=15.0, min_avg_vol=0, min_dollar_vol_m=3.75, min_atr_pct=1.0)
+    assert bu.screen(["ABC"], {"ABC": 20.0}, metrics, args)[1][0]["result"] == "kept"
+    args.min_dollar_vol_m = 150.0
+    assert bu.screen(["ABC"], {"ABC": 20.0}, metrics, args)[1][0]["result"] == "dollar_vol"
