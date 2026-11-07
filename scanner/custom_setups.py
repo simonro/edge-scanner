@@ -176,11 +176,13 @@ def _normalize_setup(raw: dict, *, existing_id: Optional[str] = None) -> dict:
             raise SetupError(
                 f"{d.name} is a universe condition, not a parameter: it cannot change "
                 "during the session. Put it in a universe filter instead.")
-        key = (nc["id"], nc.get("option", ""))
+        # The operator is part of the key: a >= row and a <= row of one condition
+        # make a window (time_et 935..1530), which is not a duplicate.
+        key = (nc["id"], nc.get("option", ""), nc["op"])
         if key in seen_p:
             raise SetupError(
-                f"{nc['id']} appears twice with the same option; parameters are ANDed, "
-                "so use one row with the tighter value")
+                f"{nc['id']} appears twice with the same option and operator; parameters "
+                "are ANDed, so use one row with the tighter value")
         seen_p.add(key)
         params_out.append(nc)
     if len(params_out) > 20:
