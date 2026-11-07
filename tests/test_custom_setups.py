@@ -352,6 +352,13 @@ def test_the_same_parameter_on_different_options_is_allowed():
     assert len(s["parameters"]) == 2
 
 
+def test_a_time_window_from_two_operators_is_allowed():
+    s = normalize_setup({"id": "cs_x", "name": "X", "triggers": [], "parameters": [
+        {"id": "time_et", "op": "gte", "value": 935},
+        {"id": "time_et", "op": "lte", "value": 1530}]})
+    assert [(c["op"], c["value"]) for c in s["parameters"]] == [("gte", 935.0), ("lte", 1530.0)]
+
+
 def test_a_setup_with_no_parameters_is_still_valid():
     assert normalize_setup({"id": "cs_x", "name": "X", "triggers": []})["parameters"] == []
 

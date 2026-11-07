@@ -22,6 +22,7 @@ Options:
 from __future__ import annotations
 
 import argparse
+import gc
 import logging
 import os
 import signal
@@ -623,6 +624,12 @@ def main() -> None:
     scanner.attach_custom(custom_eval, custom_sink)
     custom_eval.warmup(symbol_daily, bars_5m)
     app_state.custom_eval = custom_eval
+    # Warmup is done: every symbol's state and candle rings hold what they need,
+    # and nothing reads the raw history again (dashboard-added setups seed their
+    # EMAs from the candle rings). Holding it for the whole session cost hundreds
+    # of MB on a 6k-symbol universe. spy_daily stays: the plugin keeps it.
+    del symbol_daily, sector_daily, bars_5m
+    gc.collect()
     # Today's bars were replayed into the candle rings above, not through the
     # triggers. Record where every trigger stands now, so a start after the open
     # does not alert on the morning's gap, RVOL cross or streak as if new.
