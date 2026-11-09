@@ -145,6 +145,11 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     return () => { window.removeEventListener(THEME_EVENT, onTheme); ro.disconnect(); chart.remove(); refs.current = null }
   }, [])
 
+  const autoScaleY = win.autoScaleY !== false
+  useEffect(() => {
+    refs.current?.chart.priceScale('right').applyOptions({ autoScale: autoScaleY })
+  }, [autoScaleY])
+
   // data + overlays
   const visibleBars = useMemo(() => {
     if (!bars) return []
@@ -231,6 +236,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     // session (the earlier days are there for the moving averages; scroll left).
     const fitKey = `${symbol}|${tf}|${win.extended}`
     if (visibleBars.length && (fitKeyRef.current !== fitKey || !hadDataRef.current)) {
+      if (autoScaleY) r.chart.priceScale('right').applyOptions({ autoScale: true })
       const n = visibleBars.length
       const lastDay = etDate(visibleBars[n - 1].t)
       let firstOfDay = n - 1
@@ -240,7 +246,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       fitKeyRef.current = fitKey
     }
     hadDataRef.current = visibleBars.length > 0
-  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert])
+  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert, autoScaleY])
 
   const set = (patch: Partial<ChartConfig>) => useScreens.getState().updateWindow(win.id, patch)
   const toggleOverlay = (k: keyof ChartOverlays) => set({ overlays: { ...win.overlays, [k]: !win.overlays[k] } })
@@ -251,6 +257,8 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       <div className="wf-toolbar wf-nodrag">
         {symbol && <CompanyLogo symbol={symbol} website={fund?.website} />}
         <SymbolInput value={symbol} small onCommit={s => linkSymbol(win, s)} />
+        <button className={`chip${autoScaleY ? ' on' : ''}`} title="Automatically fit the y-axis when the symbol or timeframe changes"
+          aria-pressed={autoScaleY} onClick={() => set({ autoScaleY: !autoScaleY })}>AUTO Y</button>
         <div className="chart-tf">
           {TFS.map(t => <button key={t} className={tf === t ? 'on' : ''} onClick={() => set({ timeframe: t })}>{t}</button>)}
         </div>
@@ -289,6 +297,8 @@ export function ChartSettings({ win, onChange }: { win: ChartConfig; onChange(p:
           <div className="chart-tf">{TFS.map(tf => <button key={tf} className={win.timeframe === tf ? 'on' : ''} onClick={() => onChange({ timeframe: tf })}>{tf}</button>)}</div>
         </Field>
       </div>
+      <Toggle checked={win.autoScaleY !== false} onChange={autoScaleY => onChange({ autoScaleY })}
+        label="Automatically scale y-axis when symbol or timeframe changes" />
       <Field label="Intraday overlays">{t('vwap', 'Session VWAP')}{t('ema9', 'EMA 9')}{t('ema21', 'EMA 21')}{t('volume', 'Volume')}</Field>
       <Field label="Moving averages (on this timeframe's bars)">{t('sma50', 'SMA 50')}{t('sma100', 'SMA 100')}{t('sma200', 'SMA 200')}</Field>
       <Field label="Levels">{t('pdHL', 'Prior-day high / low / close (PDH / PDL / PDC)')}{t('pmHL', 'Premarket high / low (PMH / PML)')}</Field>

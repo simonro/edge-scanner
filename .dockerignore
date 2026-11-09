@@ -1,0 +1,13 @@
+.env
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+node_modules
+dashboard-v2/node_modules
+dashboard-v2/dist
+data
+logs

@@ -111,6 +111,7 @@ export interface ChartConfig extends WindowBase {
   symbol: string | null
   timeframe: ChartTimeframe
   extended: boolean
+  autoScaleY?: boolean
   overlays: ChartOverlays
 }
 

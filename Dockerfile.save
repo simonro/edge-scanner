@@ -1,0 +1,33 @@
+
+FROM python:3.13-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# Install system dependencies and Node.js
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    bash \
+    build-essential \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Install and build dashboard
+RUN npm --prefix dashboard-v2 install \
+    && npm --prefix dashboard-v2 run build
+
+EXPOSE 7777
+
+# Placeholder: verify the actual startup script before using it
+CMD ["bash", "start_scanner.sh"]

@@ -72,7 +72,7 @@ export function windowDefaults(type: WindowType, id: string): WindowConfig {
       return { ...base(id, 'scanner'), type: 'scanner', sources: [], setups: [], noSetups: true, direction: 'all',
         minScore: 0, symbolFilter: '', columns: SCANNER_DEFAULT_COLUMNS, rowTint: true, maxRows: 500 }
     case 'chart':
-      return { ...base(id, 'chart'), type: 'chart', symbol: null, timeframe: '5m', extended: false,
+      return { ...base(id, 'chart'), type: 'chart', symbol: null, timeframe: '5m', extended: false, autoScaleY: true,
         overlays: { vwap: true, ema9: true, ema21: true, volume: true, sma50: false, sma100: false, sma200: false, pdHL: true, pmHL: true } }
     case 'toplist':
       return { ...base(id, 'toplist'), type: 'toplist', list: 'rvol', limit: 25, heat: true }
