@@ -493,9 +493,11 @@ class LiveScanner:
         # never influence it. Best-effort: an error here never stops the rest.
         if self._custom_evaluator is not None and self._custom_sink is not None:
             try:
+                spy_chg = self._spy_state.rth_chg_pct if self._spy_state is not None else None
                 spy_mom15 = self._spy_state.mom_15m_pct if self._spy_state is not None else None
                 for alert in self._custom_evaluator.on_bar(state, bar, ext_fired, spy_mom15,
-                                                           session=session):
+                                                           session=session, spy_rth_chg_pct=spy_chg,
+                                                           regime=self._regime):
                     if not self._passes_profile(alert, state, bar, session, pcache, "custom"):
                         continue
                     if self._record_push(self._custom_sink.push(alert), alert, "custom", alert["setup"]):
