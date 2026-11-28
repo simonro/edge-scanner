@@ -494,12 +494,18 @@ class CustomEvaluator:
 
     # ── per bar ──
     def on_bar(self, state: Any, bar: dict, external: Optional[set[str]] = None,
-               spy_mom_15m: Optional[float] = None, session: Optional[str] = None) -> list[dict]:
+               spy_mom_15m: Optional[float] = None, session: Optional[str] = None,
+               *, spy_rth_chg_pct: Optional[float] = None, regime: Any = None) -> list[dict]:
         """
         Args:
             session: the session tag from an already-updated shared series.
                 When given, the series is NOT advanced here (LiveScanner did
                 it). Advancing it twice would double-count every bar's volume.
+            spy_rth_chg_pct: SPY's percent move from its RTH open, for the
+                alert's context.rs_vs_spy_pct. Payload only: no trigger reads it.
+            regime: the scanner's market regime when the bar is evaluated (a
+                MarketRegime or its string value), stamped on the alert as
+                market_regime. Payload only. None reads as "neutral".
         """
         plan = self._plan
         sym = state.symbol
@@ -605,7 +611,8 @@ class CustomEvaluator:
                 self._stats.setdefault(s["id"], {})[k] = self._stats.setdefault(s["id"], {}).get(k, 0) + 1
             # one alert per setup per bar; the strongest note goes first
             k0, t0, f0 = fired_here[0]
-            out.append(self._build_alert(state, bar, et, s, k0, f0, [k for k, _, _ in fired_here], sess))
+            out.append(self._build_alert(state, bar, et, s, k0, f0, [k for k, _, _ in fired_here], sess,
+                                         spy_rth_chg_pct=spy_rth_chg_pct, regime=regime))
         return out
 
     def prime(self, states: dict, *, spy_mom_15m: Optional[float] = None,
@@ -659,9 +666,16 @@ class CustomEvaluator:
 
     # ── alert ──
     def _build_alert(self, state: Any, bar: dict, et: pd.Timestamp, s: dict, key: str, f: Fire,
-                     all_keys: list[str], sess: str) -> dict:
+                     all_keys: list[str], sess: str, *, spy_rth_chg_pct: Optional[float] = None,
+                     regime: Any = None) -> dict:
         from scanner.stops import compute_stop   # local import: keeps module import order simple
         price = float(bar["close"])
+        # Market context, read from the engine and never estimated: a value the
+        # engine does not have stays None. RS is the system setups' definition
+        # (stock RTH % move minus SPY's), under the same context key.
+        rth_chg, spy_chg = _f(getattr(state, "rth_chg_pct", None)), _f(spy_rth_chg_pct)
+        rs_vs_spy = rth_chg - spy_chg if rth_chg is not None and spy_chg is not None else None
+        rrs_d1 = _f(getattr(state, "rrs_d1", None))
         direction = f.direction if f.direction in ("long", "short") else (
             "long" if s["direction"] == "long" else "short" if s["direction"] == "short" else "neutral")
         stop = stop_pct = None
@@ -691,8 +705,11 @@ class CustomEvaluator:
             "trigger": f"CS_{s['id']}:{key}",
             "triggers_fired": all_keys,
             "score": score,
-            "market_regime": "neutral",
-            "conditions": {},
+            "market_regime": getattr(regime, "value", regime) or "neutral",
+            # Daily RRS vs SPY, in the {value, pass, status} shape the dashboard's
+            # RRS column reads. Display only: no gate judged it, so pass is None.
+            "conditions": {"rrs_d1": {"value": rrs_d1, "pass": None,
+                                      "status": "ok" if rrs_d1 is not None else "no_data"}},
             "vwap": _f(getattr(state, "vwap", None)),
             "ema3": _f(getattr(state, "ema_3", None)),
             "ema9": _f(getattr(state, "ema_9", None)),
@@ -719,6 +736,8 @@ class CustomEvaluator:
             "context": {
                 "gap_pct": _f(getattr(state, "gap_pct", None)),
                 "rvol": rvol,
+                "rs_vs_spy_pct": rs_vs_spy,
+                "rrs_m5": _f(getattr(state, "rrs_m5", None)),
                 "dist_vwap_pct": _f(getattr(state, "dist_vwap_pct", None)),
                 "mom_15m_pct": _f(getattr(state, "mom_15m_pct", None)),
                 "adv20": _f(getattr(state, "adv20", None)),
